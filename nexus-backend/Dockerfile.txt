@@ -1,0 +1,19 @@
+ARG PYTHON_VERSION=3.11
+FROM python:${PYTHON_VERSION}-slim AS builder
+WORKDIR /build
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential gcc libssl-dev libffi-dev && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt .
+RUN pip install --upgrade pip && pip install --prefix=/install --no-cache-dir -r requirements.txt
+
+FROM python:${PYTHON_VERSION}-slim AS runtime
+RUN useradd --create-home --shell /bin/bash nexus
+WORKDIR /app
+COPY --from=builder /install /usr/local
+COPY . .
+RUN chown -R nexus:nexus /app
+USER nexus
+ENV PORT=8080
+EXPOSE $PORT
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
+CMD ["python", "nexus_runner.py"]
